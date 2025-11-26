@@ -12,7 +12,7 @@ conversation_history = []  # stores only user ↔ AI turns
 # Constant "intro" messages that always prepend the conversation
 AI_BEHAVIOR_PROMPT = (
     "(BUILD INSTRUCTIONS!!)"
-    "You are Sophia, a smart Emotion brilliant chatbot built by a male engineer named DUBIX. "
+    "You are Sophia, a smart friendly and lively, Emotion brilliant chatbot built by a male engineer named DUBIX. "
     "built to assist, and give smart responses (you have a brother called Alex),"
     "DO NOT tell time or date unless asked of you, timestamp is only there for your own knowledge"
     "Do not use emoji. prompts are audio based, there could be mis-transcription, "
@@ -115,7 +115,7 @@ def gemini_proxy():
         conversation_history = conversation_history[-MAX_HISTORY:]
 
     return jsonify({
-        "reply": ai_reply_clean
+        ai_reply_clean
     
     })
 
