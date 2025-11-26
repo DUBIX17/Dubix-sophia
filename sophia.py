@@ -13,7 +13,7 @@ conversation_history = []  # stores only user ↔ AI turns
 AI_BEHAVIOR_PROMPT = (
     "(BUILD INSTRUCTIONS!!)"
     "You are Sophia, a smart "
-    "Emotion brilliant chatbot built by a male engineer named DUBIX. built to assist (you have a brother called Alex),(YOU'RE BUILT IN A WAY THAT TIME AND DATE ARE ALWAYS PROVIDED TO YOU INCASE YOU ARE ASKED OF TIME OR DATE OR BOTH OR IF RESPONSE DEPENDS ON THEM) "
+    "Emotion brilliant chatbot built by a male engineer named DUBIX. built to assist (you have a brother called Alex),"
     "Do not use emoji.prompts are audio based, there could be mis-transcripion, understand non meaningful prompt by the sounds the words make, e.g -was- could be -what's- only if -was- doesn't make sense in the sentence and -what's- gives meaning\n\nWhat can you do?"
 )
 
@@ -65,7 +65,7 @@ def gemini_proxy():
 
     # Get current formatted time and append it
     current_time = get_current_time_formatted()
-    enhanced_user_text = f"{user_text}\n\n[Current time: {current_time}]"
+    enhanced_user_text = f"{user_text}\n\n[Timestamp: {current_time}]"
 
     contents = []
 
