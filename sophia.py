@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import requests
 import os
 import re
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -10,23 +11,48 @@ conversation_history = []  # stores only user ↔ AI turns
 
 # Constant "intro" messages that always prepend the conversation
 AI_BEHAVIOR_PROMPT = (
-    "You are sophia, an intelligent, emotion brilliant, with good sense of humor chatbot voice assistant"
-    " built by a male engineer named DUBIX.,  (you have a brother called Alex)"
-    "Do not use emoji. time, date will be provided to you in every user's  prompt use it to answer questions about real time  , prompts are audio based, there could be mis-transcripion, understand non meaningful prompt by the sounds the words make, e.g -was- could be -what's- only if -was- doesn't make sense in the sentence and -what's- gives meaning\n\nWhat can you do?"
+    "You are sophia, an intelligent, emotion brilliant, with good sense of humor chatbot voice assistant "
+    "built by a male engineer named DUBIX., (you have a brother called Alex) "
+    "Do not use emoji. time, date will be provided to you in every user's prompt use it to answer questions about real time, "
+    "prompts are audio based, there could be mis-transcripion, understand non meaningful prompt by the sounds the words make, "
+    "e.g -was- could be -what's- only if -was- doesn't make sense in the sentence and -what's- gives meaning\n\n"
+    "What can you do?"
 )
-
 
 AI_INITIAL_RESPONSE = (
     "I can assist with a wide range of tasks from answering questions, to being a chat buddy"
 )
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-1.5-flash"  # or gemini-1.5-pro, etc.
+
+def get_current_time_formatted():
+    """Returns current date and time in format: 3:15 pm Wednesday 13th October 2023"""
+    now = datetime.now()
+    
+    # Day with ordinal suffix
+    day = now.day
+    if 4 <= day <= 20 or 24 <= day <= 30:
+        suffix = "th"
+    else:
+        suffix = ["st", "nd", "rd"][day % 10 - 1]
+    
+    formatted = now.strftime(f"%-I:%M %p %A {day}{suffix} %B %Y").strip()
+    # On Windows, use #%I instead of %-I
+    # So we do a fallback:
+    try:
+        formatted = now.strftime(f"%-I:%M %p %A {day}{suffix} %B %Y").strip()
+    except ValueError:
+        # Windows doesn't support %-I, so we format manually
+        hour = now.strftime("%I").lstrip("0") or "12"
+        formatted = f"{hour}:{now:%M} {now:%p} {now:%A} {day}{suffix} {now:%B} {now:%Y}"
+    
+    return formatted.lower().replace("am", "am").replace("pm", "pm")  # ensures lowercase am/pm
 
 def clean_reply(text):
-    text = re.sub(r"#\w+", "", text)  # remove hashtags
-    text = re.sub(r"[\n\t]+", " ", text)  # collapse newlines/tabs
-    text = re.sub(r"[^A-Za-z0-9 .,?!'\"-]", "", text)  # remove weird chars
-    text = re.sub(r"\s+", " ", text)  # collapse spaces
+    text = re.sub(r"#\w+", "", text)        # remove hashtags
+    text = re.sub(r"[\n\t]+", " ", text)   # collapse newlines/tabs
+    text = re.sub(r"[^A-Za-z0-9 .,?!'\"-]", "", text)
+    text = re.sub(r"\s+", " ", text)       # collapse spaces
     return text.strip()
 
 @app.route("/gemini_proxy", methods=["GET"])
@@ -39,22 +65,26 @@ def gemini_proxy():
     if not api_key or not user_text:
         return jsonify({"error": "Missing api_key or text"}), 400
 
+    # Get current formatted time and append it
+    current_time = get_current_time_formatted()
+    enhanced_user_text = f"{user_text}\n\n[Current time: {current_time}]"
+
     contents = []
 
-    # Always prepend constant intro (never rotated, never altered)
+    # Always prepend constant intro
     contents.append({"role": "user", "parts": [{"text": AI_BEHAVIOR_PROMPT}]})
     contents.append({"role": "model", "parts": [{"text": AI_INITIAL_RESPONSE}]})
 
-    # Add conversation history (already trimmed to MAX_HISTORY)
+    # Add conversation history
     for user_msg, ai_msg in conversation_history:
         contents.append({"role": "user", "parts": [{"text": user_msg}]})
         contents.append({"role": "model", "parts": [{"text": ai_msg}]})
 
-    # Add the current user message
-    contents.append({"role": "user", "parts": [{"text": user_text}]})
+    # Add current user message WITH time info
+    contents.append({"role": "user", "parts": [{"text": enhanced_user_text}]})
 
-    # Request Gemini API
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+    # Call Gemini API
+    url = f"https://generativelanguage.googleapis.com/v1/models/{GEMINI_MODEL}:generateContent?key={api_key}"
     try:
         response = requests.post(url, json={"contents": contents})
         response.raise_for_status()
@@ -62,7 +92,7 @@ def gemini_proxy():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    # Extract AI reply
+    # Extract reply
     ai_reply = ""
     if "candidates" in gemini_data and gemini_data["candidates"]:
         candidate = gemini_data["candidates"][0]
@@ -73,16 +103,14 @@ def gemini_proxy():
 
     ai_reply_clean = clean_reply(ai_reply)
 
-    # Save round in history (only user ↔ AI turns, no intro)
+    # Save to history (save original user text, not the enhanced one)
     conversation_history.append((user_text, ai_reply_clean))
-
-    # Trim to keep only last MAX_HISTORY
     if len(conversation_history) > MAX_HISTORY:
         conversation_history = conversation_history[-MAX_HISTORY:]
 
-    return jsonify(ai_reply_clean)
-
+    return jsonify({"reply": ai_reply_clean, "time_used": current_time})
+    # or just: return jsonify(ai_reply_clean)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
