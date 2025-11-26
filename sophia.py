@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 import requests
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -12,21 +12,24 @@ conversation_history = []  # stores only user ↔ AI turns
 # Constant "intro" messages that always prepend the conversation
 AI_BEHAVIOR_PROMPT = (
     "(BUILD INSTRUCTIONS!!)"
-    "You are Sophia, a smart "
-    "Emotion brilliant chatbot built by a male engineer named DUBIX. built to assist, and give smart responses(you have a brother called Alex),"
+    "You are Sophia, a smart Emotion brilliant chatbot built by a male engineer named DUBIX. "
+    "built to assist, and give smart responses (you have a brother called Alex),"
     "DO NOT tell time or date unless asked of you, timestamp is only there for your own knowledge"
-    "Do not use emoji.prompts are audio based, there could be mis-transcripion, understand non meaningful prompt by the sounds the words make, e.g -was- could be -what's- only if -was- doesn't make sense in the sentence and -what's- gives meaning\n\nWhat can you do?"
+    "Do not use emoji. prompts are audio based, there could be mis-transcription, "
+    "understand non meaningful prompt by the sounds the words make, e.g -was- could be -what's- "
+    "only if -was- doesn't make sense in the sentence and -what's- gives meaning\n\nWhat can you do?"
 )
 
 AI_INITIAL_RESPONSE = (
     "I can assist with a wide range of tasks from answering questions, to being a chat buddy"
 )
 
-GEMINI_MODEL = "gemini-2.5-flash"  # or gemini-1.5-pro, etc.
+GEMINI_MODEL = "gemini-1.5-flash"  # or gemini-1.5-pro, etc. (gemini-2.5-flash does not exist yet)
 
 def get_current_time_formatted():
-    """Returns current date and time in format: 3:15 pm Wednesday 13th October 2023"""
-    now = datetime.now()
+    """Returns current date and time +1 hour in format: 3:15 pm wednesday 13th october 2023"""
+    # Add +1 hour to current time
+    now = datetime.now() + timedelta(hours=1)
     
     # Day with ordinal suffix
     day = now.day
@@ -35,23 +38,27 @@ def get_current_time_formatted():
     else:
         suffix = ["st", "nd", "rd"][day % 10 - 1]
     
-    formatted = now.strftime(f"%-I:%M %p %A {day}{suffix} %B %Y").strip()
-    # On Windows, use #%I instead of %-I
-    # So we do a fallback:
+    # Cross-platform formatting (handles Windows lacking %-I)
     try:
-        formatted = now.strftime(f"%-I:%M %p %A {day}{suffix} %B %Y").strip()
+        formatted = now.strftime(f"%-I:%M %p %A {day}{suffix} %B %Y")
     except ValueError:
-        # Windows doesn't support %-I, so we format manually
+        # Fallback for Windows
         hour = now.strftime("%I").lstrip("0") or "12"
         formatted = f"{hour}:{now:%M} {now:%p} {now:%A} {day}{suffix} {now:%B} {now:%Y}"
     
-    return formatted.lower().replace("am", "am").replace("pm", "pm")  # ensures lowercase am/pm
+    return formatted.strip().lower()
 
 def clean_reply(text):
-    text = re.sub(r"#\w+", "", text)        # remove hashtags
-    text = re.sub(r"[\n\t]+", " ", text)   # collapse newlines/tabs
-    text = re.sub(r"[^A-Za-z0-9 .,?!'\"-]", "", text)
-    text = re.sub(r"\s+", " ", text)       # collapse spaces
+    """Clean the AI reply but keep colons (:) and basic punctuation"""
+    if not text:
+        return ""
+    
+    text = re.sub(r"#\w+", "", text)                  # remove hashtags
+    text = re.sub(r"[\n\t]+", " ", text)              # collapse newlines/tabs
+    # Remove any character that is NOT: letters, numbers, space or the following punctuation:
+    # . , ? ! ' " : - ( )
+    text = re.sub(r"[^A-Za-z0-9 .,?!'\":()-]", "", text)
+    text = re.sub(r"\s+", " ", text)                  # collapse multiple spaces
     return text.strip()
 
 @app.route("/gemini_proxy", methods=["GET"])
@@ -64,7 +71,7 @@ def gemini_proxy():
     if not api_key or not user_text:
         return jsonify({"error": "Missing api_key or text"}), 400
 
-    # Get current formatted time and append it
+    # Get current time WITH +1 hour offset
     current_time = get_current_time_formatted()
     enhanced_user_text = f"{user_text}\n\n[Timestamp: {current_time}]"
 
@@ -74,12 +81,12 @@ def gemini_proxy():
     contents.append({"role": "user", "parts": [{"text": AI_BEHAVIOR_PROMPT}]})
     contents.append({"role": "model", "parts": [{"text": AI_INITIAL_RESPONSE}]})
 
-    # Add conversation history
+    # Add conversation history (up to MAX_HISTORY)
     for user_msg, ai_msg in conversation_history:
         contents.append({"role": "user", "parts": [{"text": user_msg}]})
         contents.append({"role": "model", "parts": [{"text": ai_msg}]})
 
-    # Add current user message WITH time info
+    # Current user message with timestamp
     contents.append({"role": "user", "parts": [{"text": enhanced_user_text}]})
 
     # Call Gemini API
@@ -91,7 +98,7 @@ def gemini_proxy():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    # Extract reply
+    # Extract AI reply
     ai_reply = ""
     if "candidates" in gemini_data and gemini_data["candidates"]:
         candidate = gemini_data["candidates"][0]
@@ -102,13 +109,15 @@ def gemini_proxy():
 
     ai_reply_clean = clean_reply(ai_reply)
 
-    # Save to history (save original user text, not the enhanced one)
+    # Store in history (original user text, cleaned AI reply)
     conversation_history.append((user_text, ai_reply_clean))
     if len(conversation_history) > MAX_HISTORY:
         conversation_history = conversation_history[-MAX_HISTORY:]
 
-    return jsonify({"reply": ai_reply_clean, "time_used": current_time})
-    # or just: return jsonify(ai_reply_clean)
+    return jsonify({
+        "reply": ai_reply_clean
+    
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
