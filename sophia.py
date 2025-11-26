@@ -23,7 +23,7 @@ AI_INITIAL_RESPONSE = (
     "I can assist with a wide range of tasks from answering questions, to being a chat buddy"
 )
 
-GEMINI_MODEL = "gemini-1.5-flash"  # or gemini-1.5-pro, etc.
+GEMINI_MODEL = "gemini-2.5-flash"  # or gemini-1.5-pro, etc.
 
 def get_current_time_formatted():
     """Returns current date and time in format: 3:15 pm Wednesday 13th October 2023"""
