@@ -114,11 +114,8 @@ def gemini_proxy():
     if len(conversation_history) > MAX_HISTORY:
         conversation_history = conversation_history[-MAX_HISTORY:]
 
-    return jsonify({
-        ai_reply_clean
+    return ai_reply_clean, 200
     
-    })
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=True)
